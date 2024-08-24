@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # Router container
+  router:
+    image: ubuntu:22.04
+    container_name: router
+    privileged: true
+    ports:
+      - "10000:10000"
+    networks:
+      network1:
+        ipv4_address: 172.20.0.2
+      network2:
+        ipv4_address: 172.21.0.2
+    command: >
+      bash -c "echo 'root:pass123' | chpasswd &&
+               apt-get update &&
+               apt-get install -y curl iproute2 iputils-ping net-tools iptables mtr &&
+               curl -o setup-repos.sh https://raw.githubusercontent.com/webmin/webmin/master/setup-repos.sh &&
+               echo y | sh setup-repos.sh &&
+               apt-get install --install-recommends -y webmin &&
+               echo 1 > /proc/sys/net/ipv4/ip_forward &&
+               iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE &&
+               iptables -A FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT &&
+               iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT &&
+               iptables -A FORWARD -i eth0 -o eth2 -m state --state RELATED,ESTABLISHED -j ACCEPT &&
+               iptables -A FORWARD -i eth2 -o eth0 -j ACCEPT &&
+               tail -f /dev/null"
+
+  # Containers in network1
+  container1:
+    image: ubuntu:22.04
+    container_name: container1
+    privileged: true
+    networks:
+      network1:
+    depends_on:
+      - router
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y iproute2 iputils-ping net-tools mtr &&
+               ip route del default || true &&
+               ip route add default via 172.20.0.2 &&
+               tail -f /dev/null"
+
+  container2:
+    image: ubuntu:22.04
+    container_name: container2
+    privileged: true
+    networks:
+      network1:
+    depends_on:
+      - router
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y iproute2 iputils-ping net-tools mtr &&
+               ip route del default || true &&
+               ip route add default via 172.20.0.2 &&
+               tail -f /dev/null"
+
+  # Containers in network2
+  container3:
+    image: ubuntu:22.04
+    container_name: container3
+    privileged: true
+    networks:
+      network2:
+    depends_on:
+      - router
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y iproute2 iputils-ping net-tools mtr &&
+               ip route del default || true &&
+               ip route add default via 172.21.0.2 &&
+               tail -f /dev/null"
+
+  container4:
+    image: ubuntu:22.04
+    container_name: container4
+    privileged: true
+    networks:
+      network2:
+    depends_on:
+      - router
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y iproute2 iputils-ping net-tools mtr &&
+               ip route del default || true &&
+               ip route add default via 172.21.0.2 &&
+               tail -f /dev/null"
+
+networks:
+  network1:
+    driver: bridge
+    name: network1
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+  network2:
+    driver: bridge
+    name: network2
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
